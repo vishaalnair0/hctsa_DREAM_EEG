@@ -1,18 +1,21 @@
-%% Median Classification for All Channels All Features with 9 Cross-Validations
+%% Median Classification for All Channels All Features with 9 Cross-Validations - 128Hz FS, 0.75-30Hz Bandpass
 clear;
 clc;
 
-load('D:\hctsa Project\General Workspace\Filtered_hctsa_output&operations.mat');
+load('D:\DREAMEEG_hctsa\Corrected Bandpassfiltered data and cleaned scripts\Filtered_output_and_operations.mat');
 
 main_matrix = filtered_output;
 
 %% Dream Status, Channels and Participants
 
+load('channels_excluded.mat');
 load('Variable_list.mat');
+load('channel_names.mat');
+
 
 %% Loop through all channels to retrieve trainrows and testrows
 for channel = 1:length(channels)
-    channel_ID = find(channel_list == channel);
+    channel_ID = find(channel_list == channels(channel));
     chandata = main_matrix(channel_ID,:);
     
     for feature = 1:size(chandata,2) 
@@ -111,60 +114,157 @@ direction_matrix = cell2mat(direction);
 
 chan_bestacc_withFeatureID = [m idx];
 
+load('channel_names.mat');
+%channel_names(channels_to_not_included,:) = [];
+
 
 %% Performance Distribution for each Channel
 
 figure();
-for k = 1:size(chan_feat_accuracies,1)
-    data = chan_feat_accuracies(k,:);
-    subplot(5,6,k)
+for s = 1:size(chan_feat_accuracies,1)
+    data = chan_feat_accuracies(s,:);
+    subplot(5,6,s)
     
     nbins = 0.9:(100/54):100;
     [N_norm,edges] = histcounts(data,nbins);
     plot (edges(1:end-1) , N_norm , 'b')
     hold on 
-    xline(median(chan_feat_accuracies(k,:)),'Color','r','LineWidth',1.5)
-    title(['Ch' num2str(k) ':' ' ' num2str(round(median(data),2))]);
+    xline(median(chan_feat_accuracies(s,:)),'Color','r','LineWidth',1.5)
+    title([channel_names(s,1)]);
+    %title(['Ch' num2str(k) ':' ' ' num2str(round(median(data),2))]);
 end
 
 
-%% Visualize the feature values of feature column 5090 (best-performing) for channel 20 for each case
+%% Visualize the feature values of feature column Y (best-performing) at channel X for each case
 
-channelFz_idx = find(channel_list==20);
+channel_of_interest = 21; % change to channel of interest
+featurecolumn_of_interest = 2726; % change to feature column of interest
 
-channelFz_featurevalues = main_matrix(channelFz_idx,5090);
-df_idx_chFz = find(dream_status);
-dl_idx_chFz = find(~dream_status);
-chFz_featurevalues_df = channelFz_featurevalues(df_idx_chFz);
-chFz_featurevalues_dl = channelFz_featurevalues(dl_idx_chFz);
+onechannel_idx = find(channel_list == channel_of_interest); 
+
+onechannel_featurevalues = main_matrix(onechannel_idx,featurecolumn_of_interest); 
+df_idx_onechannel = find(dream_status);
+dl_idx_onechannel = find(~dream_status);
+onechannel_featurevalues_df = onechannel_featurevalues(df_idx_onechannel);
+onechannel_featurevalues_dl = onechannel_featurevalues(dl_idx_onechannel);
 
 figure('Color','White');
-scatter(1:27,chFz_featurevalues_df','DisplayName','Dreamful Condition','MarkerFaceColor','flat');
+scatter(1:27,onechannel_featurevalues_df','DisplayName','Dreamful Condition','MarkerFaceColor','flat');
 hold on
-scatter(28:54,chFz_featurevalues_dl','DisplayName','Dreamless Condition','MarkerFaceColor','flat');
-yline(threshold_matrix(20,5090),'r','DisplayName',"Classification Threshold");
-title("Values for the Best-performing Feature at Channel Fz");
+scatter(28:54,onechannel_featurevalues_dl','DisplayName','Dreamless Condition','MarkerFaceColor','flat');
+yline(threshold_matrix(channel_of_interest,featurecolumn_of_interest),'r','DisplayName',"Classification Threshold"); % change threshold matrix (rows,cols) as well
+title("Values for the Best-performing Feature at Channel Cz");
 xlabel("Cases","FontWeight","bold");
 ylabel("Feature Value","FontWeight","bold");
 legend("Dreamful Condition","Dreamless Condition","Classification Threshold");
+set(gca,'FontSize',12);
 
-%% ADDITIONAL - I'm generating a hypothesised distribution for a candidate set of features 
+%% Post-hoc analysis on spectral-power related features 
+ 
+SP_feat_accuracies = chan_feat_accuracies(:,3543:3898);
 
-% Arbitrary values 
-start_value = 40.00;
-end_value = 85.25;
-desired_mean = 64;
-num_points = 356;
+% Plot mean accuracy of SP features across channels
+meanSP_acrosschan = mean(SP_feat_accuracies);
 
-% Generate a normally distributed random vector
-mu = desired_mean;
-sigma = (end_value - start_value) / 6; % Approximation for the standard deviation
-random_vector = normrnd(mu, sigma, [1, num_points]);
+figure('Color','white');
+histogram(meanSP_acrosschan,HandleVisibility="off");
+xline(61.11,'r');
+xlabel('Distribution of Classification Accuracies for Spectral Power Features');
+legend('Significance Threshold');
 
-% Clamp the values within the specified range
-random_vector(random_vector < start_value) = start_value;
-random_vector(random_vector > end_value) = end_value;
+% How many SP features are greater than the 0.05 threshold?
 
-% Shuffle the vector
-randomized_vector = random_vector(randperm(length(random_vector)));
+sig_SP_features_idx = meanSP_acrosschan>= 61.11; % this is the 0.05 threshold value from 'Statistical_testing_accuracies.m' script
+sig_SP_featurecolumns = find(sig_SP_features_idx); % Result is none by the way
+
+% Visualize the distribution of spectral power performance at each channel for the main 19 electrodes
+
+SP_feat_accuracies(channels_to_exclude,:) = [];
+channel_names(channels_to_exclude,:) = [];
+
+figure('Color','white');
+for s = 1:size(SP_feat_accuracies,1)
+    data = SP_feat_accuracies(s,:);
+    subplot(5,4,s)
+    
+    histogram(data)
+    hold on 
+    xline(61.11,'Color','r','LineWidth',1.5)
+    title(channel_names(s,1));
+    xlabel('SP Features Classification Accuracies');
+    hold off
+end
+
+% Are the features above the 0.05 threshold outliers? Check z-scores
+
+for ch = 1:19
+    acc_SP = SP_feat_accuracies(ch,:);
+    z = (acc_SP - mean(acc_SP)) / std(acc_SP);
+
+    outlier_perchannel{ch,:} = find(z > 2.5);
+end
+
+
+%% Let me try something
+
+SP_feature_outliers = [53,76,175,179,292,296];
+
+SP_feat_accuracies(:,SP_feature_outliers) = [];
+
+figure('Color','white');
+for s = 1:size(SP_feat_accuracies,1)
+    data = SP_feat_accuracies(s,:);
+    subplot(5,4,s)
+    
+    histogram(data)
+    hold on 
+    xline(61.11,'Color','r','LineWidth',1.5)
+    title(channel_names(s,1));
+    xlabel('SP Features Classification Accuracies');
+    hold off
+end
+
+[m,idx] = max(SP_feat_accuracies,[],2);
+SP_bestacc_withFeatureID = [m idx];
+
+% Get the operations list
+
+SP_Operations = Operations_postfilter(3543:3898,:);
+SP_Operations(SP_feature_outliers,:) = [];
+
+% Number of significant SP features per channel
+
+for ch = 1:size(SP_feat_accuracies)
+    significant_SPaccuracy_idx = SP_feat_accuracies(ch,:)>= 61.11;
+
+    significant_SPfeaturecolumns = find(significant_SPaccuracy_idx);
+
+    sig_SPfeatures_perchannel{ch,:} = significant_SPfeaturecolumns;
+end
+
+
+%% Visualize the feature values of feature column Y (best-performing) at channel X for each case
+
+channel_of_interest = 17; % change to channel of interest
+featurecolumn_of_interest = 3614; % change to feature column of interest
+
+onechannel_idx = find(channel_list == channel_of_interest); 
+
+onechannel_featurevalues = main_matrix(onechannel_idx,featurecolumn_of_interest); 
+df_idx_onechannel = find(dream_status);
+dl_idx_onechannel = find(~dream_status);
+onechannel_featurevalues_df = onechannel_featurevalues(df_idx_onechannel);
+onechannel_featurevalues_dl = onechannel_featurevalues(dl_idx_onechannel);
+
+figure('Color','White');
+scatter(1:27,onechannel_featurevalues_df','DisplayName','Dreamful Condition','MarkerFaceColor','flat');
+hold on
+scatter(28:54,onechannel_featurevalues_dl','DisplayName','Dreamless Condition','MarkerFaceColor','flat');
+yline(threshold_matrix(channel_of_interest,featurecolumn_of_interest),'r','DisplayName',"Classification Threshold"); % change threshold matrix (rows,cols) as well
+title("Values for the Best-performing Spectral Power-related Feature at Channel O1");
+xlabel("Cases","FontWeight","bold");
+ylabel("Feature Value","FontWeight","bold");
+legend("Dreamful Condition","Dreamless Condition","Classification Threshold");
+set(gca,'FontSize',12);
+
 
